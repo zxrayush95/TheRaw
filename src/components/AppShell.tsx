@@ -28,7 +28,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const checkAuthStatus = async () => {
     try {
-      const res = await fetch("/api/auth/check");
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch("/api/auth/check", { signal: controller.signal });
+      clearTimeout(timeout);
       const data = await res.json();
       if (data.authenticated) {
         setIsAuthenticated(true);

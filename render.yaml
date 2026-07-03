@@ -3,13 +3,13 @@ services:
     name: theraw
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static
-    startCommand: HOSTNAME=0.0.0.0 node .next/standalone/server.js
+    buildCommand: npm install && npm run build && cp -r public .next/standalone/public && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/static
+    startCommand: node .next/standalone/server.js
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3000
+      - key: HOSTNAME
+        value: 0.0.0.0
       - key: R2_ACCESS_KEY_ID
         sync: false
       - key: R2_SECRET_ACCESS_KEY
