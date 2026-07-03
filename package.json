@@ -1,0 +1,33 @@
+{
+  "name": "the-raw-hosting",
+  "version": "1.0.0",
+  "description": "A GitHub-like raw file sharing website using Cloudflare R2",
+  "main": "server.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "HOSTNAME=0.0.0.0 node .next/standalone/server.js",
+    "render-build": "npm install && next build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1079.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mime-types": "^2.1.35",
+    "multer": "^1.4.5-lts.1",
+    "next": "16.2.10",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.10",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

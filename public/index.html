@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TheRaw - Cloudflare R2 Raw File Manager</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Lucide Icons (via CDN) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+<body class="dark-theme">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="logo-area">
+        <i data-lucide="layers" class="logo-icon"></i>
+        <h1>TheRaw</h1>
+        <span class="badge">v1.0.0</span>
+      </div>
+      <div class="status-indicator">
+        <div class="indicator-dot connected" id="status-dot"></div>
+        <span class="status-text" id="status-text">Connecting to Server...</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-container">
+    <!-- Config Banner if placeholders exist -->
+    <div id="config-warning" class="warning-banner hidden">
+      <i data-lucide="alert-triangle"></i>
+      <div>
+        <strong>R2 Credentials Missing:</strong> Server is running with placeholder credentials. 
+        Please fill in the <code>.env</code> file in your project directory and restart the server.
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <section class="workspace-grid">
+      
+      <!-- Left Panel: Upload Zone -->
+      <div class="panel upload-panel">
+        <div class="panel-header">
+          <i data-lucide="upload-cloud"></i>
+          <h2>Upload Files</h2>
+        </div>
+        <div class="panel-body">
+          <form id="upload-form">
+            <!-- Path Prefix (Folders) -->
+            <div class="input-group">
+              <label for="upload-path">Destination Folder (Optional)</label>
+              <div class="input-with-icon">
+                <i data-lucide="folder"></i>
+                <input type="text" id="upload-path" placeholder="e.g. src/utils or assets/images" autocomplete="off">
+              </div>
+              <small class="helper-text">Simulate directory structure like GitHub (e.g. <code>src/assets/</code>)</small>
+            </div>
+
+            <!-- Custom Filename -->
+            <div class="input-group">
+              <label for="custom-filename">Rename File (Optional)</label>
+              <div class="input-with-icon">
+                <i data-lucide="edit-3"></i>
+                <input type="text" id="custom-filename" placeholder="Leave empty to use original name" autocomplete="off">
+              </div>
+            </div>
+
+            <!-- Drag & Drop Zone -->
+            <div class="drop-zone" id="drop-zone">
+              <input type="file" id="file-input" class="file-input" required>
+              <div class="drop-zone-content">
+                <i data-lucide="file-plus" class="upload-icon"></i>
+                <p class="drop-text">Drag & drop files here or <span>browse</span></p>
+                <span class="file-info-label" id="file-selected-name">No file selected</span>
+              </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="progress-container hidden" id="progress-container">
+              <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+              </div>
+              <div class="progress-labels">
+                <span id="progress-status">Uploading...</span>
+                <span id="progress-percent">0%</span>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block" id="upload-btn">
+              <i data-lucide="upload"></i> Upload to R2
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Right Panel: File Explorer (GitHub style) -->
+      <div class="panel explorer-panel">
+        <div class="panel-header explorer-header">
+          <div class="title-with-icon">
+            <i data-lucide="folder-git-2"></i>
+            <h2>Repository Files</h2>
+          </div>
+          
+          <div class="explorer-actions">
+            <!-- Search bar -->
+            <div class="search-box">
+              <i data-lucide="search" class="search-icon"></i>
+              <input type="text" id="search-input" placeholder="Search files (e.g. index.html)..." autocomplete="off">
+            </div>
+            
+            <button class="btn btn-secondary" id="refresh-btn" title="Refresh files">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-body explorer-body">
+          <!-- Directory Breadcrumbs -->
+          <div class="breadcrumbs" id="breadcrumbs">
+            <span class="breadcrumb-item root" data-path="">root</span>
+          </div>
+
+          <!-- Files Grid / List -->
+          <div class="table-container">
+            <table class="file-table">
+              <thead>
+                <tr>
+                  <th class="col-name">Name</th>
+                  <th class="col-type">Type</th>
+                  <th class="col-size">Size</th>
+                  <th class="col-date">Uploaded</th>
+                  <th class="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="file-list-body">
+                <!-- Dynamic Rows Go Here -->
+                <tr class="state-row">
+                  <td colspan="5">
+                    <div class="table-loader">
+                      <div class="spinner"></div>
+                      <p>Loading files from Cloudflare R2...</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- File Preview Drawer / Modal -->
+  <div class="modal-overlay hidden" id="preview-modal">
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title-area">
+          <i data-lucide="file-text" id="preview-icon"></i>
+          <span class="modal-filename" id="preview-filename">file.txt</span>
+          <span class="preview-badge" id="preview-mime">text/plain</span>
+        </div>
+        <div class="modal-header-actions">
+          <button class="btn btn-sm btn-secondary" id="preview-copy-raw-btn">
+            <i data-lucide="copy"></i> Copy Raw URL
+          </button>
+          <a href="#" target="_blank" class="btn btn-sm btn-primary" id="preview-open-raw-btn">
+            <i data-lucide="external-link"></i> Open Raw
+          </a>
+          <button class="btn-close" id="preview-close-btn">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="modal-body" id="preview-body">
+        <!-- Content will be rendered dynamically -->
+        <pre class="code-view"><code id="code-content"></code></pre>
+        <div id="image-view" class="image-view hidden">
+          <img src="" alt="Preview">
+        </div>
+        <div id="binary-view" class="binary-view hidden">
+          <i data-lucide="file-warning" class="binary-icon"></i>
+          <p>This file type cannot be previewed directly in the browser.</p>
+          <span class="sub-text">Binary file or unsupported format.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
