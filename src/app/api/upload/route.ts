@@ -53,6 +53,11 @@ export async function POST(req: NextRequest) {
 
     key = key.replace(/^\//, "");
 
+    // Block writing to system folder
+    if (key.startsWith(".system/")) {
+      return NextResponse.json({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+    }
+
     // Upload streamed content directly to R2
     await uploadFile(key, streamBody, mimeType, size);
 

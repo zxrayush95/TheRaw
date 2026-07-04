@@ -16,6 +16,11 @@ export async function POST(req: NextRequest) {
 
     const cleanKey = key.replace(/^\//, "");
     
+    // Block writing to system folder
+    if (cleanKey.startsWith(".system/")) {
+      return NextResponse.json({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+    }
+    
     // Set appropriate text mime types for writing text files
     const ext = cleanKey.split(".").pop()?.toLowerCase() || "";
     let contentType = "text/plain; charset=utf-8";

@@ -16,22 +16,26 @@ export async function GET(req: NextRequest) {
     const limit = limitStr ? parseInt(limitStr, 10) : 1000;
 
     if (repo) {
-      // List files under a specific repository prefix with pagination
+      // List files under a specific repository prefix with pagination, filtering out internal system folders
       const { contents, nextContinuationToken, isTruncated } = await listFiles(`${repo}/`, continuationToken, limit);
-      const files = contents.map(item => ({
-        key: item.Key || "",
-        size: item.Size || 0,
-        lastModified: item.LastModified || new Date(),
-      }));
+      const files = contents
+        .filter(item => !item.Key?.startsWith(".system/"))
+        .map(item => ({
+          key: item.Key || "",
+          size: item.Size || 0,
+          lastModified: item.LastModified || new Date(),
+        }));
       return NextResponse.json({ files, nextContinuationToken, isTruncated });
     } else if (isGlobal) {
-      // List files globally with pagination
+      // List files globally with pagination, filtering out internal system folders
       const { contents, nextContinuationToken, isTruncated } = await listFiles("", continuationToken, limit);
-      const files = contents.map(item => ({
-        key: item.Key || "",
-        size: item.Size || 0,
-        lastModified: item.LastModified || new Date(),
-      }));
+      const files = contents
+        .filter(item => !item.Key?.startsWith(".system/"))
+        .map(item => ({
+          key: item.Key || "",
+          size: item.Size || 0,
+          lastModified: item.LastModified || new Date(),
+        }));
       return NextResponse.json({ files, nextContinuationToken, isTruncated });
     } else {
       // List repositories
@@ -41,7 +45,11 @@ export async function GET(req: NextRequest) {
         const key = item.Key || "";
         const parts = key.split("/");
         if (parts.length > 1) {
-          repos.add(parts[0]);
+          const firstPart = parts[0];
+          // Filter out internal system prefixes from repo list
+          if (firstPart !== ".system") {
+            repos.add(firstPart);
+          }
         }
       });
       return NextResponse.json({ 
@@ -66,6 +74,12 @@ export async function POST(req: NextRequest) {
     if (!name) {
       return NextResponse.json({ success: false, error: "Repository name is required", code: "MISSING_NAME" }, { status: 400 });
     }
+    
+    // Prevent repository naming that could clash with system namespace
+    if (name === ".system" || name.startsWith(".system/")) {
+      return NextResponse.json({ success: false, error: "Reserved repository namespace", code: "RESERVED_NAMESPACE" }, { status: 400 });
+    }
+
     const cleanName = name.replace(/[\/\s]/g, "-").toLowerCase();
     await createRepository(cleanName);
     return NextResponse.json({ success: true, repo: cleanName });
@@ -84,6 +98,16 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const key = searchParams.get("key");
     const repo = searchParams.get("repo");
+
+    // Block deleting system files via API
+    if (key && key.startsWith(".system/")) {
+      return NextResponse.json({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    // Block deleting system repository via API
+    if (repo === ".system") {
+      return NextResponse.json({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+    }
 
     if (key) {
       // Delete single file

@@ -90,6 +90,14 @@ export async function GET(
     const resolvedParams = await params;
     const fileKeyPath = resolvedParams.file.join("/");
     
+    // Block system files
+    if (fileKeyPath.startsWith(".system/")) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }), { 
+        status: 401, 
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    
     // Parse Range request header
     const rangeHeader = request.headers.get("range") || undefined;
     
@@ -135,6 +143,12 @@ export async function HEAD(
   try {
     const resolvedParams = await params;
     const fileKeyPath = resolvedParams.file.join("/");
+
+    // Block system files
+    if (fileKeyPath.startsWith(".system/")) {
+      return new Response(null, { status: 401 });
+    }
+
     const rangeHeader = request.headers.get("range") || undefined;
 
     const response = await headFile(fileKeyPath, rangeHeader);
