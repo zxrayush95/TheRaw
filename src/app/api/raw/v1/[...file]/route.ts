@@ -1,19 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getFile } from "@/lib/r2";
+import { NextRequest } from "next/server";
+import { getFile, headFile } from "@/lib/r2";
 
-// Helper to convert Web ReadableStream to Node Buffer
-async function streamToBuffer(stream: any): Promise<Buffer> {
-  const chunks: any[] = [];
-  for await (const chunk of stream) {
-    chunks.push(chunk);
-  }
-  return Buffer.concat(chunks);
-}
-
-// Extensions we want to force render as raw text (instead of running them or forcing download)
 const textExtensions = [
   "txt", "md", "js", "jsx", "ts", "tsx", "css", "json", "xml", "yaml", "yml", "ini", "conf",
-  "py", "go", "rs", "cpp", "c", "h", "hpp", "java", "kt", "swift", "rb", "sh", "bat", "ps1", "sql", "html"
+  "py", "go", "rs", "cpp", "c", "h", "hpp", "java", "kt", "swift", "rb", "sh", "bat", "ps1", "sql", "html", "toml"
 ];
 
 function getMimeType(filename: string, r2ContentType?: string): string {
@@ -36,8 +26,60 @@ function getMimeType(filename: string, r2ContentType?: string): string {
     case "mp4": return "video/mp4";
     case "webm": return "video/webm";
     case "pdf": return "application/pdf";
+    case "apk": return "application/vnd.android.package-archive";
+    case "ipa": return "application/octet-stream";
+    case "aab": return "application/octet-stream";
+    case "zip": return "application/zip";
+    case "rar": return "application/x-rar-compressed";
+    case "7z": return "application/x-7z-compressed";
+    case "dll": return "application/octet-stream";
+    case "exe": return "application/octet-stream";
+    case "so": return "application/octet-stream";
+    case "pak": return "application/octet-stream";
+    case "uasset": return "application/octet-stream";
+    case "uexp": return "application/octet-stream";
+    case "sig": return "application/octet-stream";
+    case "pem": return "application/x-x509-ca-cert";
     default: return r2ContentType || "application/octet-stream";
   }
+}
+
+// Applies standard zero-cache, security, and CORS headers
+function applyHeaders(headers: Headers, mimeType: string, s3Response: any) {
+  headers.set("Content-Type", mimeType);
+  
+  if (s3Response.ContentLength !== undefined) {
+    headers.set("Content-Length", s3Response.ContentLength.toString());
+  }
+  
+  if (s3Response.ContentRange) {
+    headers.set("Content-Range", s3Response.ContentRange);
+  }
+  
+  headers.set("Accept-Ranges", "bytes");
+
+  if (s3Response.ETag) {
+    headers.set("ETag", s3Response.ETag);
+  }
+
+  if (s3Response.LastModified) {
+    headers.set("Last-Modified", s3Response.LastModified.toUTCString());
+  }
+
+  // Zero caching implementation
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  headers.set("Pragma", "no-cache");
+  headers.set("Expires", "0");
+
+  // CORS headers
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "*");
+
+  // Security headers
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
 }
 
 export async function GET(
@@ -46,44 +88,83 @@ export async function GET(
 ) {
   try {
     const resolvedParams = await params;
-    
-    // Join the catch-all array back into the R2 file key
     const fileKeyPath = resolvedParams.file.join("/");
     
-    const response = await getFile(fileKeyPath);
+    // Parse Range request header
+    const rangeHeader = request.headers.get("range") || undefined;
+    
+    const response = await getFile(fileKeyPath, rangeHeader);
     if (!response.Body) {
-      return new Response("File body empty", { status: 404 });
-    }
-
-    // Convert S3 Body (which can be a Stream) to a transferrable byte array or buffer
-    let bodyData: any;
-    if (typeof response.Body.transformToByteArray === "function") {
-      bodyData = await response.Body.transformToByteArray();
-    } else {
-      bodyData = await streamToBuffer(response.Body);
+      return new Response(JSON.stringify({ success: false, error: "File body empty", code: "EMPTY_BODY" }), { 
+        status: 404, 
+        headers: { "Content-Type": "application/json" }
+      });
     }
 
     const mimeType = getMimeType(fileKeyPath, response.ContentType);
-
     const headers = new Headers();
-    headers.set("Content-Type", mimeType);
-    headers.set("Content-Length", (response.ContentLength || bodyData.length).toString());
-    
-    // Set CORS headers so third-party sites can fetch raw code if they want to
-    headers.set("Access-Control-Allow-Origin", "*");
-    
-    // Standard caching rules for raw resources
-    headers.set("Cache-Control", "public, max-age=60, stale-while-revalidate=30");
+    applyHeaders(headers, mimeType, response);
 
-    return new Response(bodyData, {
-      status: 200,
+    // Stream the body directly from R2 to the response without buffering in memory
+    const bodyStream = response.Body.transformToWebStream();
+    const statusCode = response.$metadata.httpStatusCode || (rangeHeader ? 206 : 200);
+
+    return new Response(bodyStream, {
+      status: statusCode,
       headers,
     });
   } catch (error: any) {
-    console.error("Error serving raw file:", error);
-    if (error.name === "NoSuchKey") {
-      return new Response("File not found", { status: 404 });
+    if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
+      return new Response(JSON.stringify({ success: false, error: "File not found", code: "NOT_FOUND" }), { 
+        status: 404,
+        headers: { "Content-Type": "application/json" }
+      });
     }
-    return new Response("Internal Server Error", { status: 500 });
+    console.error("Error serving raw file GET:", error);
+    return new Response(JSON.stringify({ success: false, error: "Internal Server Error", code: "INTERNAL_ERROR" }), { 
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
+}
+
+export async function HEAD(
+  request: NextRequest,
+  { params }: { params: Promise<{ file: string[] }> }
+) {
+  try {
+    const resolvedParams = await params;
+    const fileKeyPath = resolvedParams.file.join("/");
+    const rangeHeader = request.headers.get("range") || undefined;
+
+    const response = await headFile(fileKeyPath, rangeHeader);
+    const mimeType = getMimeType(fileKeyPath, response.ContentType);
+    const headers = new Headers();
+    applyHeaders(headers, mimeType, response);
+
+    const statusCode = response.$metadata.httpStatusCode || (rangeHeader ? 206 : 200);
+
+    return new Response(null, {
+      status: statusCode,
+      headers,
+    });
+  } catch (error: any) {
+    if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
+      return new Response(null, { status: 404 });
+    }
+    console.error("Error serving raw file HEAD:", error);
+    return new Response(null, { status: 500 });
+  }
+}
+
+export async function OPTIONS() {
+  const headers = new Headers();
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "*");
+  headers.set("Access-Control-Max-Age", "86400"); // 24 hours preflight cache
+  return new Response(null, {
+    status: 204,
+    headers,
+  });
 }

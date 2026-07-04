@@ -1,4 +1,4 @@
-import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 
 const r2Client = new S3Client({
   region: "auto",
@@ -11,30 +11,48 @@ const r2Client = new S3Client({
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || "the-raw";
 
-export async function listFiles(prefix = "") {
+export async function listFiles(prefix = "", continuationToken?: string, maxKeys = 1000) {
   const command = new ListObjectsV2Command({
     Bucket: BUCKET_NAME,
     Prefix: prefix,
+    ContinuationToken: continuationToken,
+    MaxKeys: maxKeys,
   });
   const response = await r2Client.send(command);
-  return response.Contents || [];
+  return {
+    contents: response.Contents || [],
+    nextContinuationToken: response.NextContinuationToken,
+    isTruncated: response.IsTruncated,
+  };
 }
 
-export async function getFile(key: string) {
+export async function getFile(key: string, range?: string) {
   const command = new GetObjectCommand({
     Bucket: BUCKET_NAME,
     Key: key,
+    Range: range,
   });
   const response = await r2Client.send(command);
   return response;
 }
 
-export async function uploadFile(key: string, body: Buffer, contentType: string) {
+export async function headFile(key: string, range?: string) {
+  const command = new HeadObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+    Range: range,
+  });
+  const response = await r2Client.send(command);
+  return response;
+}
+
+export async function uploadFile(key: string, body: any, contentType: string, contentLength?: number) {
   const command = new PutObjectCommand({
     Bucket: BUCKET_NAME,
     Key: key,
     Body: body,
     ContentType: contentType,
+    ContentLength: contentLength,
   });
   return await r2Client.send(command);
 }
@@ -55,13 +73,14 @@ export async function createRepository(repoName: string) {
   const content = `# ${cleanRepoName}\n\nWelcome to your new repository! Open this repo to upload or create files.\n`;
   const buffer = Buffer.from(content);
   
-  return await uploadFile(readmeKey, buffer, "text/markdown; charset=utf-8");
+  return await uploadFile(readmeKey, buffer, "text/markdown; charset=utf-8", buffer.length);
 }
 
 // Delete an entire repository (deletes all objects matching the prefix)
 export async function deleteRepository(repoName: string) {
   const prefix = `${repoName}/`;
-  const contents = await listFiles(prefix);
+  // Fetch up to 1000 objects under this prefix to delete them
+  const { contents } = await listFiles(prefix, undefined, 1000);
   if (contents.length === 0) return;
 
   const deleteParams = {

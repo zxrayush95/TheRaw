@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getTokens, saveTokens, ApiToken } from "@/lib/tokens";
+import { getTokens, saveTokens, ApiToken, hashToken, compareTokens } from "@/lib/tokens";
 
-// Checks if the dashboard session is authorized (cookie-only verification)
+// Checks if the dashboard session is authorized (cookie-only verification with constant-time check)
 async function isAuthorizedSession() {
-  const cookieStore = await cookies();
-  const session = cookieStore.get("auth_session")?.value;
-  const expectedPassword = process.env.ADMIN_PASSWORD || "admin";
-  return session === expectedPassword;
+  try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get("auth_session")?.value;
+    const expectedPassword = process.env.ADMIN_PASSWORD || "admin";
+    if (session && expectedPassword) {
+      return compareTokens(hashToken(session), hashToken(expectedPassword));
+    }
+  } catch (e) {}
+  return false;
 }
 
 // 1. List tokens (sensitive token keys are masked)
@@ -19,11 +24,15 @@ export async function GET(req: NextRequest) {
   try {
     const tokens = await getTokens();
     
-    // Mask tokens before returning to client (e.g. tr_tok_****abcd)
+    // Return sanitized versions
     const sanitized = tokens.map(t => {
-      const displayKey = t.token.length > 8 
-        ? `tr_tok_****${t.token.substring(t.token.length - 4)}`
-        : "tr_tok_****";
+      let displayKey = t.maskedToken;
+      if (!displayKey) {
+        // Fallback for legacy database records
+        displayKey = t.token && t.token.length > 8 
+          ? `tr_tok_****${t.token.substring(t.token.length - 4)}`
+          : "tr_tok_****";
+      }
       return {
         id: t.id,
         name: t.name,
@@ -61,14 +70,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Generate a secure random token key
-    // UUID (32-chars hex) prefixed with tr_tok_ for tracking
     const randomHex = crypto.randomUUID().replace(/-/g, "");
     const rawTokenStr = `tr_tok_${randomHex}`;
+    const hashed = hashToken(rawTokenStr);
+    const masked = `tr_tok_****${rawTokenStr.substring(rawTokenStr.length - 4)}`;
 
     const newToken: ApiToken = {
       id: crypto.randomUUID(),
       name,
-      token: rawTokenStr,
+      hashedToken: hashed,
+      maskedToken: masked,
       scopes: scopes as ("read" | "write" | "delete")[],
       createdAt: new Date().toISOString()
     };
@@ -77,8 +88,14 @@ export async function POST(req: NextRequest) {
     tokens.push(newToken);
     await saveTokens(tokens);
 
-    // Return the cleartext token string to the client once
-    return NextResponse.json({ success: true, token: newToken });
+    // Return the cleartext token string exactly once to the client alongside newToken schema
+    return NextResponse.json({ 
+      success: true, 
+      token: {
+        ...newToken,
+        token: rawTokenStr // Send cleartext value ONLY this time
+      }
+    });
   } catch (err: any) {
     console.error("Error creating token:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });

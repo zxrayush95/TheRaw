@@ -4,14 +4,14 @@ import { checkAuth } from "@/lib/tokens";
 
 export async function POST(req: NextRequest) {
   if (!await checkAuth(req, "write")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
   try {
     const { key, content } = await req.json();
 
     if (!key || content === undefined) {
-      return NextResponse.json({ error: "Missing key or content" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Missing key or content", code: "MISSING_PARAM" }, { status: 400 });
     }
 
     const cleanKey = key.replace(/^\//, "");
@@ -26,11 +26,11 @@ export async function POST(req: NextRequest) {
     else if (ext === "js") contentType = "application/javascript; charset=utf-8";
 
     const buffer = Buffer.from(content);
-    await uploadFile(cleanKey, buffer, contentType);
+    await uploadFile(cleanKey, buffer, contentType, buffer.length);
 
     return NextResponse.json({ success: true, key: cleanKey });
   } catch (error: any) {
     console.error("Error writing file:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message, code: "WRITE_FAILED" }, { status: 500 });
   }
 }

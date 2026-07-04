@@ -1,16 +1,34 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { getFile, uploadFile } from "./r2";
+import { createHash, timingSafeEqual } from "crypto";
 
 export interface ApiToken {
   id: string;
   name: string;
-  token: string;
+  token?: string;        // Legacy plaintext format
+  hashedToken?: string;  // Secure SHA-256 hash
+  maskedToken: string;   // e.g. tr_tok_****abcd
   scopes: ("read" | "write" | "delete")[];
   createdAt: string;
 }
 
 const TOKENS_FILE = ".system/tokens.json";
+
+// Secure helper to hash a token
+export function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+// Constant-time comparison to protect against timing attacks
+export function compareTokens(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return timingSafeEqual(bufA, bufB);
+}
 
 // Retrieve generated tokens from Cloudflare R2
 export async function getTokens(): Promise<ApiToken[]> {
@@ -41,8 +59,13 @@ export async function checkAuth(req: NextRequest, requiredScope?: "read" | "writ
     const cookieStore = await cookies();
     const session = cookieStore.get("auth_session")?.value;
     const expectedPassword = process.env.ADMIN_PASSWORD || "admin";
-    if (session === expectedPassword) {
-      return true;
+    
+    if (session && expectedPassword) {
+      const hashedSession = hashToken(session);
+      const hashedExpected = hashToken(expectedPassword);
+      if (compareTokens(hashedSession, hashedExpected)) {
+        return true;
+      }
     }
   } catch (e) {
     // cookies() can throw in some edge contexts (like static rendering)
@@ -61,9 +84,20 @@ export async function checkAuth(req: NextRequest, requiredScope?: "read" | "writ
     return false;
   }
 
+  const requestHashed = hashToken(requestToken);
+  
   // Read active tokens registry
   const tokens = await getTokens();
-  const matched = tokens.find(t => t.token === requestToken);
+  const matched = tokens.find(t => {
+    if (t.hashedToken) {
+      return compareTokens(t.hashedToken, requestHashed);
+    } else if (t.token) {
+      // Legacy plaintext token comparison
+      return t.token === requestToken;
+    }
+    return false;
+  });
+
   if (!matched) {
     return false;
   }

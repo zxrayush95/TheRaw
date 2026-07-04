@@ -4,35 +4,38 @@ import { checkAuth } from "@/lib/tokens";
 
 export async function GET(req: NextRequest) {
   if (!await checkAuth(req, "read")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
   try {
     const { searchParams } = new URL(req.url);
     const repo = searchParams.get("repo");
     const isGlobal = searchParams.get("global") === "true";
+    const continuationToken = searchParams.get("continuationToken") || undefined;
+    const limitStr = searchParams.get("limit");
+    const limit = limitStr ? parseInt(limitStr, 10) : 1000;
 
     if (repo) {
-      // List files under a specific repository prefix
-      const contents = await listFiles(`${repo}/`);
+      // List files under a specific repository prefix with pagination
+      const { contents, nextContinuationToken, isTruncated } = await listFiles(`${repo}/`, continuationToken, limit);
       const files = contents.map(item => ({
         key: item.Key || "",
         size: item.Size || 0,
         lastModified: item.LastModified || new Date(),
       }));
-      return NextResponse.json({ files });
+      return NextResponse.json({ files, nextContinuationToken, isTruncated });
     } else if (isGlobal) {
-      // List all files in the bucket for global view
-      const contents = await listFiles();
+      // List files globally with pagination
+      const { contents, nextContinuationToken, isTruncated } = await listFiles("", continuationToken, limit);
       const files = contents.map(item => ({
         key: item.Key || "",
         size: item.Size || 0,
         lastModified: item.LastModified || new Date(),
       }));
-      return NextResponse.json({ files });
+      return NextResponse.json({ files, nextContinuationToken, isTruncated });
     } else {
-      // List all repositories by checking top-level folder names
-      const contents = await listFiles();
+      // List repositories
+      const { contents, nextContinuationToken, isTruncated } = await listFiles("", continuationToken, limit);
       const repos = new Set<string>();
       contents.forEach(item => {
         const key = item.Key || "";
@@ -41,36 +44,40 @@ export async function GET(req: NextRequest) {
           repos.add(parts[0]);
         }
       });
-      return NextResponse.json({ repositories: Array.from(repos).sort() });
+      return NextResponse.json({ 
+        repositories: Array.from(repos).sort(),
+        nextContinuationToken,
+        isTruncated 
+      });
     }
   } catch (error: any) {
     console.error("Error listing files or repositories:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message, code: "LIST_FAILED" }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   if (!await checkAuth(req, "write")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
   try {
     const { name } = await req.json();
     if (!name) {
-      return NextResponse.json({ error: "Repository name is required" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Repository name is required", code: "MISSING_NAME" }, { status: 400 });
     }
     const cleanName = name.replace(/[\/\s]/g, "-").toLowerCase();
     await createRepository(cleanName);
     return NextResponse.json({ success: true, repo: cleanName });
   } catch (error: any) {
     console.error("Error creating repository:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message, code: "CREATE_FAILED" }, { status: 500 });
   }
 }
 
 export async function DELETE(req: NextRequest) {
   if (!await checkAuth(req, "delete")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
   try {
@@ -88,9 +95,9 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    return NextResponse.json({ error: "Missing key or repo parameter" }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Missing key or repo parameter", code: "MISSING_PARAM" }, { status: 400 });
   } catch (error: any) {
     console.error("Error during deletion:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message, code: "DELETE_FAILED" }, { status: 500 });
   }
 }
