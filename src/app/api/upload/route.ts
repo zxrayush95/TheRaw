@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadFile } from "@/lib/r2";
 import { checkAuth } from "@/lib/tokens";
+import { backupFile } from "@/lib/backups";
 import { Readable } from "stream";
 
 export async function POST(req: NextRequest) {
@@ -57,6 +58,9 @@ export async function POST(req: NextRequest) {
     if (key.startsWith(".system/")) {
       return NextResponse.json({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
     }
+
+    // Back up the existing file if this operation overwrites it
+    await backupFile(key, "overwritten");
 
     // Upload streamed content directly to R2
     await uploadFile(key, streamBody, mimeType, size);

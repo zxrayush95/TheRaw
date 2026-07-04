@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listFiles, deleteFile, createRepository, deleteRepository } from "@/lib/r2";
 import { checkAuth } from "@/lib/tokens";
+import { backupFile } from "@/lib/backups";
 
 export async function GET(req: NextRequest) {
   if (!await checkAuth(req, "read")) {
@@ -110,11 +111,20 @@ export async function DELETE(req: NextRequest) {
     }
 
     if (key) {
-      // Delete single file
+      // 1. Back up file to Recycle Bin first
+      await backupFile(key, "deleted");
+      // 2. Delete single file
       await deleteFile(key);
       return NextResponse.json({ success: true });
     } else if (repo) {
-      // Delete whole repository
+      // 1. Back up all files inside the repo first
+      const { contents } = await listFiles(`${repo}/`, undefined, 1000);
+      for (const item of contents) {
+        if (item.Key && !item.Key.startsWith(".system/")) {
+          await backupFile(item.Key, "deleted");
+        }
+      }
+      // 2. Delete whole repository
       await deleteRepository(repo);
       return NextResponse.json({ success: true });
     }

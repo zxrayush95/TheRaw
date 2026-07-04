@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadFile } from "@/lib/r2";
 import { checkAuth } from "@/lib/tokens";
+import { backupFile } from "@/lib/backups";
 
 export async function POST(req: NextRequest) {
   if (!await checkAuth(req, "write")) {
@@ -20,7 +21,10 @@ export async function POST(req: NextRequest) {
     if (cleanKey.startsWith(".system/")) {
       return NextResponse.json({ success: false, error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
     }
-    
+
+    // Back up the existing file if this operation overwrites it
+    await backupFile(cleanKey, "overwritten");
+
     // Set appropriate text mime types for writing text files
     const ext = cleanKey.split(".").pop()?.toLowerCase() || "";
     let contentType = "text/plain; charset=utf-8";

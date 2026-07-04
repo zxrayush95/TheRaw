@@ -97,6 +97,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // Determine header sub-title based on active URL route
   const getHeaderTitle = () => {
     if (pathname === "/tokens") return "API Access Keys";
+    if (pathname === "/history") return "Recycle Bin";
     if (pathname.startsWith("/repos")) {
       const parts = pathname.split("/");
       if (parts.length > 2 && parts[2]) {
@@ -165,6 +166,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isGlobalActive = pathname === "/";
   const isReposActive = pathname.startsWith("/repos");
   const isTokensActive = pathname === "/tokens";
+  const isHistoryActive = pathname === "/history";
 
   return (
     <>
@@ -247,6 +249,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <path d="M11.5 1a3.5 3.5 0 00-3.5 3.5c0 .35.05.69.15 1.01L1.15 12.51a.75.75 0 000 1.06l1.28 1.28a.75.75 0 001.06 0l1.28-1.28a.25.25 0 01.18-.07h1.5a.25.25 0 01.18.07l1.04 1.04a.75.75 0 001.06 0l1.04-1.04a.25.25 0 01.18-.07H11a.75.75 0 00.53-.22l1.41-1.41c.32.1.66.15 1.01.15a3.5 3.5 0 003.5-3.5V4.5A3.5 3.5 0 0015 1h-3.5zM15 4.5a1.5 1.5 0 01-1.5 1.5H12a.75.75 0 00-.75.75v1.25a.25.25 0 01-.07.18l-1.41 1.41a.25.25 0 01-.18.07H8.09a.75.75 0 00-.53.22L6.12 11.32a.25.25 0 01-.36 0L4.48 9.68a.25.25 0 010-.36L5.78 8.02a.75.75 0 00.22-.53V6.09a.25.25 0 01.07-.18l1.41-1.41a.25.25 0 01.18-.07H9a.75.75 0 00.75-.75V3.5a1.5 1.5 0 011.5-1.5H15a1.5 1.5 0 011.5 1.5V4.5zM13 3.5a1 1 0 11-2 0 1 1 0 012 0z"></path>
             </svg>
             API Access Keys
+          </button>
+
+          <button 
+            className={`drawer-nav-item ${isHistoryActive ? "active" : ""}`}
+            onClick={() => handleNavigation("/history")}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zm4.5 1.25V1.75A1.75 1.75 0 009.25 0h-2.5A1.75 1.75 0 005 1.75V3H1.75a.75.75 0 000 1.5h.39l.848 9.324A2.25 2.25 0 005.23 16h5.54a2.25 2.25 0 002.242-2.046l.848-9.324h.39a.75.75 0 000-1.5H11zM6 5.25a.75.75 0 01.75-.75h.5a.75.75 0 01.75.75v6a.75.75 0 01-.75.75h-.5a.75.75 0 01-.75-.75v-6zm3 0a.75.75 0 01.75-.75h.5a.75.75 0 01.75.75v6a.75.75 0 01-.75.75h-.5a.75.75 0 01-.75-.75v-6z"></path>
+            </svg>
+            Recycle Bin
           </button>
         </div>
 
