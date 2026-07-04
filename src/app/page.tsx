@@ -143,7 +143,9 @@ export default function GlobalStoragePage() {
         const formData = new FormData();
         formData.append("file", file);
         
-        const combinedPath = uploadPath ? uploadPath.replace(/\/$/, "") : "";
+        // Default to current active folder prefix if no custom destination is provided
+        const activeFolder = uploadPath ? uploadPath.replace(/\/$/, "") : currentPath.replace(/\/$/, "");
+        const combinedPath = activeFolder;
         formData.append("path", combinedPath);
 
         const res = await fetch("/api/upload", {
@@ -527,7 +529,7 @@ export default function GlobalStoragePage() {
             <label className="path-label">Destination Folder</label>
             <input 
               type="text" 
-              placeholder="e.g. assets/css" 
+              placeholder={currentPath ? `Default: ${currentPath}` : "e.g. assets/css"} 
               className="path-input" 
               value={uploadPath}
               onChange={(e) => setUploadPath(e.target.value)}

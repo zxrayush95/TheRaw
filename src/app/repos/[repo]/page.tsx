@@ -146,8 +146,9 @@ export default function RepoDetailPage() {
         const formData = new FormData();
         formData.append("file", file);
         
-        const relativeDir = uploadPath ? `${uploadPath.replace(/\/$/, "")}` : "";
-        const combinedPath = relativeDir ? `${repo}/${relativeDir}` : repo;
+        // Default to current active folder prefix inside the repository if no custom path is specified
+        const activeFolder = uploadPath ? uploadPath.replace(/\/$/, "") : currentPath.replace(/\/$/, "");
+        const combinedPath = activeFolder ? `${repo}/${activeFolder}` : repo;
         formData.append("path", combinedPath);
 
         const res = await fetch("/api/upload", {
@@ -537,7 +538,7 @@ export default function RepoDetailPage() {
             <label className="path-label">Destination Folder</label>
             <input 
               type="text" 
-              placeholder="e.g. src/components" 
+              placeholder={currentPath ? `Default: ${currentPath}` : "e.g. src/components"} 
               className="path-input" 
               value={uploadPath}
               onChange={(e) => setUploadPath(e.target.value)}
